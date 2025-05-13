@@ -1,41 +1,61 @@
-import threading
-import time
+# Ball.py
 
-MARGIN = 1
-WIDTH, HEIGHT = 500, 400
-BALL_SIZE = 20
+class Ball:
+    def __init__(self, ball_id, x, y, dx, dy, color):
+        """
+        Initializes a new ball with position, direction and color.
 
-class Ball(threading.Thread):
-    def __init__(self, dto, model):
-        super().__init__(daemon=True)
-        self.dto = dto
-        self.model = model
-        self.alive = True
+        :param ball_id: Unique identifier of the ball
+        :param x: X coordinate of the ball
+        :param y: Y coordinate of the ball
+        :param dx: Horizontal velocity
+        :param dy: Vertical velocity
+        :param color: Color of the ball (string)
+        """
+        self.id = ball_id
+        self.x = x
+        self.y = y
+        self.dx = dx
+        self.dy = dy
+        self.color = color
+        self.just_transferred = 0  # Cooldown to prevent immediate re-transfer
 
-    def run(self):
-        print(f"Bola {self.dto.id} iniciada en pantalla {self.model.game_id}")
-        while self.alive and self.model.active:
-            self.dto.x += self.dto.dx
-            self.dto.y += self.dto.dy
+    def update_position(self):
+        """
+        Updates the position of the ball based on its current velocity.
+        """
+        self.x += self.dx
+        self.y += self.dy
 
-            # Rebote vertical con márgenes
-            if self.dto.y <= MARGIN:
-                self.dto.y = MARGIN
-                self.dto.dy *= -1
-            elif self.dto.y >= HEIGHT - BALL_SIZE - MARGIN:
-                self.dto.y = HEIGHT - BALL_SIZE - MARGIN
-                self.dto.dy *= -1
+    def to_dict(self):
+        """
+        Converts the ball to a dictionary for socket transfer.
 
-            # Transferencia si sale completamente por izquierda o derecha
-            if self.dto.x < -BALL_SIZE or self.dto.x > WIDTH:
-                other_id = 1 - self.model.game_id
-                if self.model.transfer_manager.transfer_ball(self.model.game_id, self.dto):
-                    print(f"Bola {self.dto.id} transferida de {self.model.game_id} a {other_id}")
-                    if self in self.model.balls:
-                        self.model.balls.remove(self)
-                    break
-                else:
-                    self.dto.dx *= -1
-                    self.dto.x = max(MARGIN, min(self.dto.x, WIDTH - BALL_SIZE - MARGIN))
+        :return: Dictionary with ball data
+        """
+        return {
+            'id': self.id,
+            'x': self.x,
+            'y': self.y,
+            'dx': self.dx,
+            'dy': self.dy,
+            'color': self.color
+        }
 
-            time.sleep(0.02)
+    @staticmethod
+    def from_dict(data):
+        """
+        Creates a Ball object from a dictionary received via socket.
+
+        :param data: Dictionary containing ball data
+        :return: Ball object
+        """
+        ball = Ball(
+            data['id'],
+            data['x'],
+            data['y'],
+            data['dx'],
+            data['dy'],
+            data['color']
+        )
+        return ball

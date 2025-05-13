@@ -1,29 +1,28 @@
-from multiprocessing import Process, Manager, freeze_support
-from GameController import start_game
-from BallTransferManager import BallTransferManager
-import time
+import multiprocessing
+from GameController import GameController
 
-manager = None  # referencia global
+# Function to start the game for a given screen
+def run_game(screen_id, port):
+    # Create a GameController for the given screen ID and shared port
+    controller = GameController(screen_id, port)
+    # Start the game loop for this screen
+    controller.run()
 
-if __name__ == "__main__":
-    freeze_support()
-    manager = Manager()
-    transfer_manager = BallTransferManager(manager)
+# Entry point of the application
+def main():
+    port = 10000  # Port for socket communication between screens
+    processes = []  # List to keep track of subprocesses
 
-    processes = []
-    for game_id in (0, 1):
-        p = Process(target=start_game, args=(game_id, transfer_manager))
+    # Create and start a separate process for each screen
+    for screen_id in [0, 1]:  # You can add more screen IDs if needed
+        p = multiprocessing.Process(target=run_game, args=(screen_id, port))
         p.start()
         processes.append(p)
 
-    try:
-        while True:
-            time.sleep(1)
-            if not any(transfer_manager.active_games.values()):
-                print("Todas las pantallas se han cerrado. Fin del programa.")
-                break
-    except KeyboardInterrupt:
-        print("Interrupción manual. Cerrando procesos...")
-
+    # Wait for all screen processes to finish
     for p in processes:
         p.join()
+
+# Start the program
+if __name__ == "__main__":
+    main()
