@@ -1,24 +1,36 @@
 import pygame
 
+# Clase encargada de mostrar la interfaz gráfica de una pantalla
 class GameView:
-    def __init__(self, screen_index, width, height):
-        # Initialize screen properties
-        self.screen_index = screen_index
-        self.width = width
-        self.height = height
+    def __init__(self, screen_id, screen_width, screen_height):
+        # Inicialización de parámetros
+        self.screen_id = screen_id  # Identificador único de la pantalla (0 o 1)
+        self.screen_width = screen_width  # Ancho de la pantalla
+        self.screen_height = screen_height  # Alto de la pantalla
 
-        # Create the window with its size and title
-        self.screen = pygame.display.set_mode((width, height))
-        pygame.display.set_caption(f"Screen {screen_index}")
+        # Inicialización de la ventana de Pygame
+        self.window = pygame.display.set_mode((screen_width, screen_height))
+        pygame.display.set_caption(f"Ball Game - Screen {screen_id}")
 
+        # Fuente para mostrar texto en pantalla
+        self.font = pygame.font.SysFont(None, 24)
+
+    # Método para dibujar todas las bolas en pantalla
     def draw(self, balls):
-        """Draw all balls and update the screen."""
-        # Fill the background with black color
-        self.screen.fill((0, 0, 0))
+        print(f"[Pantalla {self.screen_id}] Dibujando {len(balls)} bolas")
+        self.window.fill((0, 0, 0))  # Limpiar pantalla con color negro
 
-        # Draw each ball as a circle
+        # Dibujar cada bola como un círculo
         for ball in balls:
-            pygame.draw.circle(self.screen, ball.color, (int(ball.x), int(ball.y)), ball.radius)
+            pygame.draw.circle(self.window, ball.color, (int(ball.x), int(ball.y)), ball.radius)
 
-        # Refresh the screen
+        # Mostrar el número de bolas activas en pantalla
+        text = self.font.render(f"Balls: {len(balls)}", True, (255, 255, 255))
+        self.window.blit(text, (10, 10))
+
+        # Actualizar la pantalla
         pygame.display.flip()
+
+    # Método para cerrar correctamente la ventana
+    def close(self):
+        pygame.quit()

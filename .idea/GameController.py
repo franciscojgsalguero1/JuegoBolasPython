@@ -1,82 +1,43 @@
 import pygame
-from Ball import Ball
-from BallDTO import BallDTO
-from BallTransferManager import BallTransferManager
+import time
 
 class GameController:
-    def __init__(self, screen_index, screen_count, model):
-        # Save reference to model and screen configuration
+    def __init__(self, model, transfer_manager):
         self.model = model
-        self.screen_index = screen_index
-        self.screen_count = screen_count
-
-        # Time control for updates (frames per second)
-        self.clock = pygame.time.Clock()
-
-        # Flag to stop the game loop
+        self.transfer_manager = transfer_manager
         self.running = True
+        self.paused = False
 
-        # Initialize transfer manager for sending and receiving balls
-        self.transfer_manager = BallTransferManager(
-            screen_index,
-            screen_count,
-            self.receive_balls  # callback function to receive balls
-        )
-
-    def receive_balls(self, ball_dtos):
-        """Callback function to receive transferred balls from another screen."""
-        for dto in ball_dtos:
-            ball = Ball.from_dto(dto)
-            print(f"[Screen {self.screen_index}] Received transferred ball: {dto}")
-            self.model.add_ball(ball)
+        # ✅ Crear una bola al inicio del juego
+        self.model.add_ball()
 
     def update(self):
-        """Update all game logic."""
-        # Move each ball
-        for ball in self.model.balls[:]:  # Work on a copy of the list
-            ball.move()
+        if self.paused:
+            return
 
-            # Bounce off top and bottom walls
-            if ball.y - ball.radius <= 0 or ball.y + ball.radius >= self.model.height:
-                ball.dy *= -1
+        # Actualizar posición de las bolas
+        self.model.update_balls()
 
-            # Determine if ball should transfer to another screen
-            if self.screen_index > 0 and ball.x - ball.radius <= 0:
-                # Transfer to previous screen (left)
-                dto = ball.to_dto()
-                self.model.remove_ball(ball)
-                self.transfer_manager.send_balls([dto], self.screen_index - 1)
-                print(f"Ball {ball.id} transferred from {self.screen_index} to {self.screen_index - 1}")
-            elif self.screen_index < self.screen_count - 1 and ball.x + ball.radius >= self.model.width:
-                # Transfer to next screen (right)
-                dto = ball.to_dto()
-                self.model.remove_ball(ball)
-                self.transfer_manager.send_balls([dto], self.screen_index + 1)
-                print(f"Ball {ball.id} transferred from {self.screen_index} to {self.screen_index + 1}")
+        # Verificar si alguna bola debe ser transferida
+        balls_to_transfer = self.model.get_balls_to_transfer()
+        if balls_to_transfer:
+            print(f"[TransferManager] Enviando {len(balls_to_transfer)} bolas a pantalla {self.model.screen_index ^ 1}")
+            self.transfer_manager.send_balls(self.model.screen_index ^ 1, balls_to_transfer)
 
-    def handle_events(self):
-        """Handle user input and system events."""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False  # Stop the main loop
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                # Add a new ball at mouse position when user clicks
-                x, y = pygame.mouse.get_pos()
-                ball = Ball(x, y)
-                print(f"Ball {ball.id} started on screen {self.screen_index}")
-                self.model.add_ball(ball)
+    def add_ball(self):
+        # Método público para agregar una bola manualmente (por tecla, etc.)
+        self.model.add_ball()
 
-    def run_step(self):
-        """Execute a single game frame."""
-        self.handle_events()
-        self.update()
-        return self.running
+    def pause(self):
+        self.paused = True
 
-    def get_balls(self):
-        """Return the list of balls currently in the model."""
-        return self.model.balls
+    def resume(self):
+        self.paused = False
 
     def stop(self):
-        """Stop the game loop and close the socket."""
         self.running = False
-        self.transfer_manager.close()
+
+    def handle_received_balls(self, balls_dto):
+        # Manejar bolas recibidas desde otra pantalla
+        for dto in balls_dto:
+            self.model.add_received_ball(dto)

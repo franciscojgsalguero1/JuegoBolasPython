@@ -1,83 +1,48 @@
-import pickle
-import socket
-import threading
-from BallDTO import BallDTO
+import time
+from Ball import Ball
 
 class BallTransferManager:
-    """
-    Clase que gestiona la lógica de transferencia de bolas entre pantallas usando sockets en una arquitectura peer-to-peer.
-    """
-
-    def __init__(self, screen_id, on_receive_callback):
-        """
-        Inicializa el gestor de transferencia de bolas.
-
-        :param screen_id: ID de la pantalla actual (0 o 1)
-        :param on_receive_callback: Función que se ejecuta cuando se recibe una bola del socket
-        """
+    def __init__(self, screen_id, send_queues, recv_queues, get_balls_func, set_balls_func):
         self.screen_id = screen_id
-        self.on_receive_callback = on_receive_callback  # Callback para procesar bolas recibidas
+        self.send_queues = send_queues
+        self.recv_queues = recv_queues
+        self.get_balls = get_balls_func
+        self.set_balls = set_balls_func
 
-        self.port = 1000  # Puerto compartido
-        self.host = 'localhost'
-
-        self.conn = None
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.settimeout(1.0)  # Evita bloquearse indefinidamente
-
-        # Intenta conectar al puerto compartido. Si falla, se pone en modo servidor.
-        try:
-            self.socket.connect((self.host, self.port))
-            self.conn = self.socket
-            print(f"[TransferManager] Pantalla {screen_id} conectada como cliente")
-        except:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.bind((self.host, self.port))
-            self.socket.listen(1)
-            print(f"[TransferManager] Pantalla {screen_id} esperando conexión como servidor")
-            self.conn, _ = self.socket.accept()
-            print(f"[TransferManager] Pantalla {screen_id} aceptó conexión")
-
-        # Hilo de escucha de recepción de bolas
-        self.listen_thread = threading.Thread(target=self.receive_loop, daemon=True)
-        self.listen_thread.start()
-
-        self.lock = threading.Lock()
-
-    def send_ball(self, ball):
-        """
-        Envía una bola a la otra pantalla a través del socket.
-
-        :param ball: Instancia de la clase Ball
-        """
-        try:
-            ball_dto = BallDTO.from_ball(ball)
-            data = pickle.dumps(ball_dto)
-            with self.lock:
-                self.conn.sendall(len(data).to_bytes(4, byteorder='big') + data)
-        except Exception as e:
-            print(f"[TransferManager] Error al enviar bola: {e}")
-
-    def receive_loop(self):
-        """
-        Hilo dedicado a recibir bolas constantemente del socket.
-        """
+    def run(self, width):
         while True:
+            time.sleep(0.01)
+
+            balls = self.get_balls()
+            remaining_balls = []
+            balls_to_transfer = {0: [], 1: []}
+
+            for ball in balls:
+                if ball.should_transfer(width):
+                    dest_screen_id = 1 - self.screen_id
+                    ball.last_transfer_time = time.time()
+                    balls_to_transfer[dest_screen_id].append(ball.to_dto())
+                    print(f"Bola {ball.id} transferida de {self.screen_id} a {dest_screen_id}")
+                else:
+                    remaining_balls.append(ball)
+
+            self.set_balls(remaining_balls)
+
+            for dest_id, dto_list in balls_to_transfer.items():
+                if dto_list:
+                    try:
+                        self.send_queues[dest_id].put(dto_list)
+                        print(f"[TransferManager] Enviando {len(dto_list)} bolas a pantalla {dest_id}")
+                    except:
+                        pass
+
             try:
-                # Recibir primero los 4 bytes que indican el tamaño del mensaje
-                size_data = self.conn.recv(4)
-                if not size_data:
-                    continue
-                size = int.from_bytes(size_data, byteorder='big')
-                data = b''
-                while len(data) < size:
-                    packet = self.conn.recv(size - len(data))
-                    if not packet:
-                        break
-                    data += packet
-                if data:
-                    ball_dto = pickle.loads(data)
-                    self.on_receive_callback(ball_dto)
-            except Exception as e:
-                pass  # Se puede imprimir si se quiere debuggear
+                received_dtos = self.recv_queues[self.screen_id].get_nowait()
+                if received_dtos:
+                    new_balls = [Ball.from_dto(dto, self.screen_id) for dto in received_dtos]
+                    print(f"[Pantalla {self.screen_id}] Recibe bola transferida: {received_dtos}")
+                    self.set_balls(self.get_balls() + new_balls)
+                    for ball in new_balls:
+                        print(f"Bola {ball.id} iniciada en pantalla {self.screen_id}")
+            except:
+                pass

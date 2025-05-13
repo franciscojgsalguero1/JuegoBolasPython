@@ -1,97 +1,82 @@
-# GameModel.py
-import random
 import threading
 from Ball import Ball
+from BallDTO import BallDTO
 
 class GameModel:
-    def __init__(self, screen_id, width, height, transfer_manager):
+    def __init__(self, screen_index, screen_width, screen_height):
         """
-        Initializes the game model for a given screen.
+        Inicializa el modelo del juego para una pantalla específica.
 
-        :param screen_id: Identifier for the screen (0 or 1)
-        :param width: Width of the screen
-        :param height: Height of the screen
-        :param transfer_manager: Manager responsible for sending balls to the other screen
+        :param screen_index: índice de la pantalla actual (0 o 1)
+        :param screen_width: ancho de la pantalla
+        :param screen_height: alto de la pantalla
         """
-        self.screen_id = screen_id
-        self.width = width
-        self.height = height
-        self.transfer_manager = transfer_manager
-        self.balls = []
-        self.lock = threading.Lock()
+        self.screen_index = screen_index
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.balls = []  # Lista de bolas activas en esta pantalla
+        self.ball_id_counter = 0  # Contador para asignar IDs únicos a las bolas
+        self.lock = threading.Lock()  # Para proteger acceso concurrente a la lista de bolas
+        self.just_received = {}  # Diccionario para evitar retransmisión inmediata de bolas
 
-    def create_ball(self):
-        """
-        Create a new ball with random position and direction, and add it to the model.
-        """
-        ball_id = len(self.balls)
-        x = random.randint(50, self.width - 50)
-        y = random.randint(50, self.height - 50)
-        dx = random.choice([-2, 2])
-        dy = random.choice([-2, 2])
-        color = random.choice(["red", "green", "blue", "yellow"])
-        ball = Ball(ball_id, x, y, dx, dy, color)
-        print(f"Bola {ball_id} iniciada en pantalla {self.screen_id}")
-        with self.lock:
-            self.balls.append(ball)
+        self.add_ball()  # ✅ Crear una bola al iniciar el modelo
 
-    def update_balls(self):
+    def update(self):
         """
-        Updates the position of each ball and handles bouncing and transfer between screens.
+        Actualiza la posición de las bolas.
         """
         with self.lock:
-            new_balls = []
             for ball in self.balls:
-                # Move the ball
-                ball.update_position()
-
-                # Bounce vertically (top/bottom)
-                if ball.y <= 0 or ball.y >= self.height:
-                    ball.dy *= -1
-
-                # Handle cooldown period after transfer
-                if ball.just_transferred > 0:
-                    ball.just_transferred -= 1
-                    new_balls.append(ball)
-                    continue
-
-                # Transfer logic when the ball leaves the screen horizontally
-                if ball.x < 0:
-                    if self.screen_id == 0:
-                        ball.just_transferred = 10  # Prevent bouncing back immediately
-                        self.transfer_manager.send_ball(ball, 1)
-                    else:
-                        ball.dx *= -1  # Bounce if it's the last screen
-                        new_balls.append(ball)
-
-                elif ball.x > self.width:
-                    if self.screen_id == 1:
-                        ball.just_transferred = 10
-                        self.transfer_manager.send_ball(ball, 0)
-                    else:
-                        ball.dx *= -1
-                        new_balls.append(ball)
-
-                else:
-                    # If the ball is within the screen horizontally, keep it
-                    new_balls.append(ball)
-
-            self.balls = new_balls
-
-    def add_ball(self, ball):
-        """
-        Add a transferred ball to this model.
-
-        :param ball: Ball object received from another screen
-        """
-        print(f"[Pantalla {self.screen_id}] Recibe bola transferida: {ball.to_dict()}")
-        ball.just_transferred = 10  # Set cooldown to avoid immediate re-transfer
-        with self.lock:
-            self.balls.append(ball)
+                ball.move()
+                ball.check_wall_collision(self.screen_width, self.screen_height)
 
     def get_balls(self):
         """
-        Return the current list of balls (thread-safe).
+        Retorna una copia de las bolas actuales (para dibujarlas).
         """
         with self.lock:
             return list(self.balls)
+
+    def add_ball(self):
+        """
+        Crea una nueva bola y la añade al modelo.
+        """
+        with self.lock:
+            ball = Ball(self.ball_id_counter, self.screen_width, self.screen_height)
+            self.balls.append(ball)
+            self.ball_id_counter += 1
+            print(f"Bola {ball.id} iniciada en pantalla {self.screen_index}")
+
+    def remove_ball(self, ball_id):
+        """
+        Elimina una bola del modelo por su ID.
+        """
+        with self.lock:
+            self.balls = [ball for ball in self.balls if ball.id != ball_id]
+
+    def balls_to_transfer(self):
+        """
+        Retorna una lista de bolas que deben ser transferidas a otra pantalla.
+        """
+        with self.lock:
+            to_transfer = []
+            remaining = []
+
+            for ball in self.balls:
+                if ball.x < 0 or ball.x > self.screen_width:
+                    # Bola ha salido por la izquierda o derecha → se transfiere
+                    to_transfer.append(ball)
+                else:
+                    remaining.append(ball)
+
+            self.balls = remaining
+            return to_transfer
+
+    def receive_ball(self, ball_dto: BallDTO):
+        """
+        Recibe una bola desde otra pantalla y la añade al modelo.
+        """
+        with self.lock:
+            new_ball = Ball.from_dto(ball_dto)
+            self.balls.append(new_ball)
+            print(f"Bola {new_ball.id} iniciada en pantalla {self.screen_index}")

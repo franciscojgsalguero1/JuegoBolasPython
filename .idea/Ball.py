@@ -1,61 +1,52 @@
-# Ball.py
+import random
+import time
+from BallDTO import BallDTO
 
 class Ball:
-    def __init__(self, ball_id, x, y, dx, dy, color):
-        """
-        Initializes a new ball with position, direction and color.
-
-        :param ball_id: Unique identifier of the ball
-        :param x: X coordinate of the ball
-        :param y: Y coordinate of the ball
-        :param dx: Horizontal velocity
-        :param dy: Vertical velocity
-        :param color: Color of the ball (string)
-        """
-        self.id = ball_id
+    def __init__(self, id, x, y, dx, dy, color, screen_id, last_transfer_time=None):
+        self.id = id
         self.x = x
         self.y = y
         self.dx = dx
         self.dy = dy
         self.color = color
-        self.just_transferred = 0  # Cooldown to prevent immediate re-transfer
+        self.screen_id = screen_id
+        self.last_transfer_time = last_transfer_time or 0
 
-    def update_position(self):
-        """
-        Updates the position of the ball based on its current velocity.
-        """
+    def move(self):
         self.x += self.dx
         self.y += self.dy
 
-    def to_dict(self):
-        """
-        Converts the ball to a dictionary for socket transfer.
+    def bounce(self, width, height):
+        if self.y <= 0 or self.y >= height:
+            self.dy *= -1
+        if self.x <= 0 or self.x >= width:
+            self.dx *= -1
 
-        :return: Dictionary with ball data
-        """
-        return {
-            'id': self.id,
-            'x': self.x,
-            'y': self.y,
-            'dx': self.dx,
-            'dy': self.dy,
-            'color': self.color
-        }
+    def should_transfer(self, width):
+        if time.time() - self.last_transfer_time < 0.5:
+            return False
+        return self.x < 0 or self.x > width
+
+    def to_dto(self):
+        return BallDTO(
+            id=self.id,
+            x=self.x,
+            y=self.y,
+            dx=self.dx,
+            dy=self.dy,
+            color=self.color
+        )
 
     @staticmethod
-    def from_dict(data):
-        """
-        Creates a Ball object from a dictionary received via socket.
-
-        :param data: Dictionary containing ball data
-        :return: Ball object
-        """
-        ball = Ball(
-            data['id'],
-            data['x'],
-            data['y'],
-            data['dx'],
-            data['dy'],
-            data['color']
+    def from_dto(dto, screen_id):
+        return Ball(
+            id=dto["id"],
+            x=dto["x"],
+            y=dto["y"],
+            dx=dto["dx"],
+            dy=dto["dy"],
+            color=dto["color"],
+            screen_id=screen_id,
+            last_transfer_time=time.time()
         )
-        return ball
