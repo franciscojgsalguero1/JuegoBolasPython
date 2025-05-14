@@ -1,82 +1,65 @@
 import threading
+import time
 from Ball import Ball
-from BallDTO import BallDTO
 
 class GameModel:
     def __init__(self, screen_index, screen_width, screen_height):
-        """
-        Inicializa el modelo del juego para una pantalla específica.
-
-        :param screen_index: índice de la pantalla actual (0 o 1)
-        :param screen_width: ancho de la pantalla
-        :param screen_height: alto de la pantalla
-        """
         self.screen_index = screen_index
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.balls = []  # Lista de bolas activas en esta pantalla
-        self.ball_id_counter = 0  # Contador para asignar IDs únicos a las bolas
-        self.lock = threading.Lock()  # Para proteger acceso concurrente a la lista de bolas
-        self.just_received = {}  # Diccionario para evitar retransmisión inmediata de bolas
+        self.balls = []
+        self.ball_id_counter = 0
+        self.lock = threading.Lock()
+        self.received_time = {}
 
-        self.add_ball()  # ✅ Crear una bola al iniciar el modelo
-
-    def update(self):
-        """
-        Actualiza la posición de las bolas.
-        """
+    def update_balls(self):
+        now = time.time()
         with self.lock:
-            for ball in self.balls:
-                ball.move()
-                ball.check_wall_collision(self.screen_width, self.screen_height)
+            for ball in self.balls[:]:  # Create a copy for iteration
+                if not ball.transferring:
+                    ball.move()
+                    ball.check_wall_collision(self.screen_width, self.screen_height)
+                else:
+                    if ball.update_transfer(1/60):  # Assuming 60fps
+                        self.balls.remove(ball)
+
+            # Filter out balls that are being immediately retransferred
+            self.balls = [ball for ball in self.balls if not self._is_immediate_retransfer(ball, now)]
+
+    def _is_immediate_retransfer(self, ball, now):
+        if ball.id in self.received_time:
+            return now - self.received_time[ball.id] < 0.3  # Short cooldown
+        return False
 
     def get_balls(self):
-        """
-        Retorna una copia de las bolas actuales (para dibujarlas).
-        """
         with self.lock:
             return list(self.balls)
 
     def add_ball(self):
-        """
-        Crea una nueva bola y la añade al modelo.
-        """
         with self.lock:
             ball = Ball(self.ball_id_counter, self.screen_width, self.screen_height)
             self.balls.append(ball)
             self.ball_id_counter += 1
-            print(f"Bola {ball.id} iniciada en pantalla {self.screen_index}")
+            print(f"Ball {ball.id} created on screen {self.screen_index}")
 
-    def remove_ball(self, ball_id):
-        """
-        Elimina una bola del modelo por su ID.
-        """
-        with self.lock:
-            self.balls = [ball for ball in self.balls if ball.id != ball_id]
-
-    def balls_to_transfer(self):
-        """
-        Retorna una lista de bolas que deben ser transferidas a otra pantalla.
-        """
+    def get_balls_to_transfer(self):
         with self.lock:
             to_transfer = []
-            remaining = []
-
             for ball in self.balls:
-                if ball.x < 0 or ball.x > self.screen_width:
-                    # Bola ha salido por la izquierda o derecha → se transfiere
+                if ball.is_off_screen(self.screen_width) and not ball.transferring:
+                    ball.start_transfer(self.screen_index)
                     to_transfer.append(ball)
-                else:
-                    remaining.append(ball)
-
-            self.balls = remaining
             return to_transfer
 
-    def receive_ball(self, ball_dto: BallDTO):
-        """
-        Recibe una bola desde otra pantalla y la añade al modelo.
-        """
+    def add_received_ball(self, dto):
         with self.lock:
-            new_ball = Ball.from_dto(ball_dto)
-            self.balls.append(new_ball)
-            print(f"Bola {new_ball.id} iniciada en pantalla {self.screen_index}")
+            ball = Ball.from_dto(dto)
+            # Position ball at correct edge
+            if ball.dx > 0:  # Coming from left
+                ball.x = -ball.radius
+            else:  # Coming from right
+                ball.x = self.screen_width + ball.radius
+
+            self.balls.append(ball)
+            self.received_time[ball.id] = time.time()
+            print(f"Ball {ball.id} received on screen {self.screen_index}")

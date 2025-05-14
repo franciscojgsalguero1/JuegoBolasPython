@@ -1,66 +1,50 @@
-import multiprocessing
 import pygame
+import multiprocessing
+import time
 import sys
+from BallTransferManager import BallTransferManager
+from GameController import GameController
 from GameModel import GameModel
 from GameView import GameView
-from GameController import GameController
-from BallTransferManager import BallTransferManager
 
-def game_loop(screen_id, send_queues, recv_queues, model):
+def game_process(screen_index, width, height, connections):
     pygame.init()
-    screen = pygame.display.set_mode((600, 400))
-    pygame.display.set_caption(f"Screen {screen_id}")
+    model = GameModel(screen_index, width, height)
+    transfer_manager = BallTransferManager(screen_index, connections)
+    controller = GameController(model, transfer_manager)
+    view = GameView(screen_index, width, height)
     clock = pygame.time.Clock()
 
-    view = GameView(screen, screen_id)
-    controller = GameController(model)
+    while controller.running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                controller.stop()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    controller.add_ball()
 
-    controller.create_ball(screen_id)
+        controller.update()
+        balls = model.get_balls()
+        view.draw(balls)
 
-    transfer_manager = BallTransferManager(
-        screen_id,
-        send_queues,
-        recv_queues,
-        model.get_balls,
-        model.set_balls
-    )
-    transfer_process = multiprocessing.Process(target=transfer_manager.run, args=(600,))
-    transfer_process.start()
+        received_dto = transfer_manager.receive_balls()
+        if received_dto:
+            controller.handle_received_balls(received_dto)
 
-    try:
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
+        clock.tick(60)
 
-            balls = model.get_balls()
-            for ball in balls:
-                ball.move()
-                ball.bounce(600, 400)
+    pygame.quit()
 
-            model.set_balls(balls)
-            view.draw(balls)
-            clock.tick(60)
+if __name__ == '__main__':
+    width, height = 600, 400
+    conn1, conn2 = multiprocessing.Pipe()
+    connections = [conn1, conn2]
 
-    finally:
-        print(f"[Pantalla {screen_id}] Esperando que las bolas terminen antes de cerrar...")
-        transfer_process.terminate()
-        pygame.quit()
+    p1 = multiprocessing.Process(target=game_process, args=(0, width, height, connections))
+    p2 = multiprocessing.Process(target=game_process, args=(1, width, height, connections))
 
-if __name__ == "__main__":
-    model0 = GameModel()
-    model1 = GameModel()
-
-    queue_0_to_1 = multiprocessing.Queue()
-    queue_1_to_0 = multiprocessing.Queue()
-
-    p0 = multiprocessing.Process(target=game_loop, args=(0, {1: queue_0_to_1}, {0: queue_1_to_0}, model0))
-    p1 = multiprocessing.Process(target=game_loop, args=(1, {0: queue_1_to_0}, {1: queue_0_to_1}, model1))
-
-    p0.start()
     p1.start()
+    p2.start()
 
-    p0.join()
     p1.join()
-    print("Todas las pantallas se han cerrado. Fin del programa.")
+    p2.join()

@@ -1,36 +1,61 @@
 import pygame
 
-# Clase encargada de mostrar la interfaz gráfica de una pantalla
 class GameView:
     def __init__(self, screen_id, screen_width, screen_height):
-        # Inicialización de parámetros
-        self.screen_id = screen_id  # Identificador único de la pantalla (0 o 1)
-        self.screen_width = screen_width  # Ancho de la pantalla
-        self.screen_height = screen_height  # Alto de la pantalla
-
-        # Inicialización de la ventana de Pygame
+        self.screen_id = screen_id
+        self.screen_width = screen_width
+        self.screen_height = screen_height
         self.window = pygame.display.set_mode((screen_width, screen_height))
         pygame.display.set_caption(f"Ball Game - Screen {screen_id}")
+        self.font = pygame.font.SysFont('Arial', 24)
+        try:
+            pygame.mixer.init()
+            self.transfer_sound = pygame.mixer.Sound("transfer.wav")
+        except:
+            print("Could not load transfer sound")
+            self.transfer_sound = None
 
-        # Fuente para mostrar texto en pantalla
-        self.font = pygame.font.SysFont(None, 24)
-
-    # Método para dibujar todas las bolas en pantalla
     def draw(self, balls):
-        print(f"[Pantalla {self.screen_id}] Dibujando {len(balls)} bolas")
-        self.window.fill((0, 0, 0))  # Limpiar pantalla con color negro
+        self.window.fill((0, 0, 0))  # Clear screen with black
 
-        # Dibujar cada bola como un círculo
         for ball in balls:
-            pygame.draw.circle(self.window, ball.color, (int(ball.x), int(ball.y)), ball.radius)
+            if ball.transferring:
+                # On sending screen (origin screen)
+                if ball.origin_screen == self.screen_id:
+                    # Draw shrinking ball
+                    current_radius = int(ball.radius * (1 - ball.transfer_progress))
+                    if current_radius > 0:
+                        pygame.draw.circle(self.window, ball.color,
+                                           (int(ball.x), int(ball.y)),
+                                           current_radius)
+                # On receiving screen
+                else:
+                    # Draw growing ball at the edge
+                    current_radius = int(ball.radius * ball.transfer_progress)
+                    if current_radius > 0:
+                        if ball.dx > 0:  # Coming from left
+                            x = int(current_radius)
+                        else:  # Coming from right
+                            x = int(self.screen_width - current_radius)
 
-        # Mostrar el número de bolas activas en pantalla
+                        pygame.draw.circle(self.window, ball.color,
+                                           (x, int(ball.y)),
+                                           current_radius)
+
+                        # Play sound at start of transfer
+                        if ball.transfer_progress < 0.1 and self.transfer_sound:
+                            self.transfer_sound.play()
+            else:
+                # Normal ball rendering
+                pygame.draw.circle(self.window, ball.color,
+                                   (int(ball.x), int(ball.y)),
+                                   ball.radius)
+
+        # Draw ball counter
         text = self.font.render(f"Balls: {len(balls)}", True, (255, 255, 255))
         self.window.blit(text, (10, 10))
 
-        # Actualizar la pantalla
         pygame.display.flip()
 
-    # Método para cerrar correctamente la ventana
     def close(self):
         pygame.quit()
