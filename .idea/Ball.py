@@ -35,7 +35,7 @@ class Ball:
             # En pantalla 1, solo rebota si toca el borde derecho (no rebota por la izquierda para recibir bolas)
             if self.x + self.radius >= screen_width:
                 self.dx *= -1
-        elif self.screen_index == 0:
+        else:
             # En pantalla 0, rebota solo si toca el borde izquierdo
             if self.x - self.radius <= 0:
                 self.dx *= -1
