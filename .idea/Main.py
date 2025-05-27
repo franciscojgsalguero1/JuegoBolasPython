@@ -7,7 +7,7 @@ from GameController import GameController
 from BallTransferManager import BallTransferManager
 
 SCREEN_WIDTH = 600
-SCREEN_HEIGHT = 400
+SCREEN_HEIGHT = 600
 PORT = 1000
 
 def run_screen(screen_index):
